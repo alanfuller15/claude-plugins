@@ -1,0 +1,20 @@
+{
+  "name": "alanfuller15-tools",
+  "description": "Personal Claude Code plugins. Workflow machinery extracted from real projects.",
+  "owner": {
+    "name": "alanfuller15",
+    "url": "https://github.com/alanfuller15"
+  },
+  "metadata": {
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "genesis",
+      "source": "./plugins/genesis",
+      "description": "Session continuity and verification discipline: state injection at session start, transcript snapshots before compaction, a verification gate on turn end, and a write guard.",
+      "category": "workflow",
+      "tags": ["continuity", "verification", "handoff"]
+    }
+  ]
+}
