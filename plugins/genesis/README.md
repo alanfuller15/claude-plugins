@@ -46,14 +46,17 @@ It does, and **the skills are fine.** Verify it rather than taking this on
 faith: run `/genesis:reconcile`. It resolves and loads normally.
 
 The count includes `commands/*.md` files only; it does not count
-`skills/*/SKILL.md`. That behaviour is written down in
-[anthropics/claude-code#41842](https://github.com/anthropics/claude-code/issues/41842)
-— but read that issue with its status in mind rather than as a current bug
-report. It is **closed as a duplicate** of #42471, which was fixed in 2.1.98,
-and its headline complaint (that `skills/` plugins are not invocable as slash
-commands *at all*) does **not** reproduce: on 2.1.220 the skills resolve as
-slash commands and only the count is wrong. Cite it for where the counter
-behaviour is documented, not as an open issue matching what you are seeing.
+`skills/*/SKILL.md`. Tracked as
+[anthropics/claude-code#81551](https://github.com/anthropics/claude-code/issues/81551),
+filed from this plugin — it is the live issue for the count.
+
+The behaviour was described earlier in
+[#41842](https://github.com/anthropics/claude-code/issues/41842), but do not
+cite that one as current: it is **closed as a duplicate** of #42471, fixed in
+2.1.98, and its headline complaint (that `skills/` plugins are not invocable as
+slash commands *at all*) does **not** reproduce. On 2.1.220 the skills resolve
+as slash commands and only the count is wrong — which is why #81551 exists
+separately rather than as a comment on a fixed bug.
 
 **Do not add a `commands/` directory to fix the count.** It is the workaround
 that issue names, and it duplicates every skill's full content into a second
