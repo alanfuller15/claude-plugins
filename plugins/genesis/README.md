@@ -40,6 +40,27 @@ Local development:
 
 Or load without installing: `claude --plugin-dir ./claude-plugins/plugins/genesis`
 
+### If `/reload-plugins` says `0 skills`
+
+It does, and **the skills are fine.** Verify it rather than taking this on
+faith: run `/genesis:reconcile`. It resolves and loads normally.
+
+The count includes `commands/*.md` files only; it does not count
+`skills/*/SKILL.md`. That behaviour is written down in
+[anthropics/claude-code#41842](https://github.com/anthropics/claude-code/issues/41842)
+— but read that issue with its status in mind rather than as a current bug
+report. It is **closed as a duplicate** of #42471, which was fixed in 2.1.98,
+and its headline complaint (that `skills/` plugins are not invocable as slash
+commands *at all*) does **not** reproduce: on 2.1.220 the skills resolve as
+slash commands and only the count is wrong. Cite it for where the counter
+behaviour is documented, not as an open issue matching what you are seeing.
+
+**Do not add a `commands/` directory to fix the count.** It is the workaround
+that issue names, and it duplicates every skill's full content into a second
+file in order to change a display number. Two copies that must be kept in sync
+is a real cost; a wrong count is a cosmetic one. The invocation bugs the
+workaround existed for are fixed.
+
 ### Releasing
 
 `version` in `plugins/genesis/.claude-plugin/plugin.json` **must be bumped on
