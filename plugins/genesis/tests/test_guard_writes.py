@@ -104,7 +104,7 @@ def extract_pathcheck():
 PATHCHECK = extract_pathcheck()
 
 
-def run_pathcheck_as_windows(target, root, home):
+def run_pathcheck_as_windows(target, root, home, source="env", git_top=""):
     """Run the decision snippet with `os.path` swapped for `ntpath`.
 
     Inputs are given already-native, i.e. as cygpath would have produced them.
@@ -115,7 +115,7 @@ def run_pathcheck_as_windows(target, root, home):
     buf = io.StringIO()
     try:
         os.path = ntpath
-        sys.argv = ["pathcheck", target, root, home]
+        sys.argv = ["pathcheck", target, root, home, source, git_top]
         with contextlib.redirect_stdout(buf):
             try:
                 exec(compile(PATHCHECK, "guard-writes.sh:PY_PATHCHECK", "exec"), {})
@@ -153,7 +153,7 @@ class PosixEndToEnd(unittest.TestCase):
         result = run_guard(os.path.join(self.root, "elsewhere.txt"), self.project)
         assert_denied(self, result)
         self.assertIn(
-            "outside the project directory",
+            "outside the project root",
             result["hookSpecificOutput"]["permissionDecisionReason"],
         )
 
@@ -275,6 +275,105 @@ class CygpathPlumbing(unittest.TestCase):
         )
 
 
+def reason(result):
+    return result["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+class DenialMessage(unittest.TestCase):
+    """The denial must say HOW the root was determined, not just what it is.
+
+    The acceptance criterion this was built to, stated as a test: a reader with
+    nothing but the message can decide whether the root is the one they meant.
+    That needs the root, the source that produced it, and whether it is a repo.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = os.path.realpath(self.tmp.name)
+        self.outside = os.path.join(self.root, "outside.txt")
+        self.addCleanup(self.tmp.cleanup)
+
+    def make_repo(self, path):
+        os.makedirs(path, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-q"], cwd=path, check=True, capture_output=True
+        )
+        return path
+
+    # --- the three git states ---
+
+    def test_no_repository_at_root(self):
+        project = os.path.join(self.root, "plain")
+        os.makedirs(project)
+        self.assertIn("git:           no repository at this root",
+                      reason(run_guard(self.outside, project)))
+
+    def test_root_is_repository_root(self):
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        self.assertIn("git:           repository root",
+                      reason(run_guard(self.outside, project)))
+
+    def test_root_inside_a_repository(self):
+        """The misaimed-root case: a real repo, but the root points below it.
+
+        More common than the no-repo case and completely invisible before this
+        line existed — the denial looked identical to a correctly-rooted one.
+        """
+        top = self.make_repo(os.path.join(self.root, "repo"))
+        project = os.path.join(top, "plugins", "genesis")
+        os.makedirs(project)
+        self.assertIn(f"git:           inside repository {top}",
+                      reason(run_guard(self.outside, project)))
+
+    def test_inside_repository_names_the_toplevel_not_the_root(self):
+        """Regression: the two paths must not be confused for each other."""
+        top = self.make_repo(os.path.join(self.root, "repo"))
+        project = os.path.join(top, "sub")
+        os.makedirs(project)
+        text = reason(run_guard(self.outside, project))
+        self.assertIn(f"inside repository {top}", text)
+        self.assertNotIn(f"inside repository {project}", text)
+
+    # --- the two root sources ---
+
+    def test_root_from_env_is_named(self):
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        self.assertIn("root from:     CLAUDE_PROJECT_DIR",
+                      reason(run_guard(self.outside, project)))
+
+    def test_root_from_cwd_is_named_and_says_env_is_unset(self):
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        text = reason(run_guard(self.outside, None, cwd=project))
+        self.assertIn(
+            "root from:     current directory at session start "
+            "(CLAUDE_PROJECT_DIR not set)",
+            text,
+        )
+
+    # --- the criterion itself ---
+
+    def test_message_carries_all_three_facts(self):
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        text = reason(run_guard(self.outside, project))
+        for field in ("project root:", "root from:", "git:"):
+            self.assertIn(field, text, f"missing {field!r}")
+
+    def test_resolved_root_appears_verbatim(self):
+        """The root printed must be the root compared against, not the raw
+        value — on Windows those differ, and a message naming the un-resolved
+        one would send the reader looking at the wrong directory."""
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        text = reason(run_guard(self.outside, project + "/./"))
+        self.assertIn(f"project root:  {project}\n", text)
+
+    def test_scope_disclaimer_survives(self):
+        """Non-goal check: the guard still says what it does not cover."""
+        project = self.make_repo(os.path.join(self.root, "repo"))
+        text = reason(run_guard(self.outside, project))
+        self.assertIn("location only, not content", text)
+        self.assertIn("does not cover writes made through Bash", text)
+
+
 class WindowsSemantics(unittest.TestCase):
     """The comparison logic under Windows path rules, via ntpath.
 
@@ -333,6 +432,42 @@ class WindowsSemantics(unittest.TestCase):
                 r"C:\Users\marke\alan\docs\notes.md", "/c/Users/marke/alan", self.HOME
             ),
         )
+
+    # --- the denial message, under Windows path rules ---
+
+    def test_inside_repository_under_windows_paths(self):
+        r = run_pathcheck_as_windows(
+            r"C:\Windows\Temp\x.txt", self.ROOT, self.HOME,
+            source="cwd", git_top=r"C:\Users\marke",
+        )
+        self.assertIn(r"git:           inside repository C:\Users\marke", reason(r))
+
+    def test_repository_root_matches_despite_case(self):
+        """git and the environment can disagree on case on Windows.
+
+        Without normcase on this comparison the guard would report every
+        correctly-rooted session as `inside repository <the same path>`, which
+        is worse than saying nothing — it invents a misaimed root.
+        """
+        r = run_pathcheck_as_windows(
+            r"C:\Windows\Temp\x.txt", r"C:\Users\marke\alan", self.HOME,
+            git_top=r"c:\users\MARKE\alan",
+        )
+        self.assertIn("git:           repository root", reason(r))
+
+    def test_repository_root_matches_despite_forward_slashes(self):
+        """Git for Windows reports toplevel with forward slashes: C:/Users/x."""
+        r = run_pathcheck_as_windows(
+            r"C:\Windows\Temp\x.txt", r"C:\Users\marke\alan", self.HOME,
+            git_top="C:/Users/marke/alan",
+        )
+        self.assertIn("git:           repository root", reason(r))
+
+    def test_no_repository_under_windows_paths(self):
+        r = run_pathcheck_as_windows(
+            r"C:\Windows\Temp\x.txt", self.ROOT, self.HOME, git_top="",
+        )
+        self.assertIn("git:           no repository at this root", reason(r))
 
     def test_normalisation_is_what_repairs_it(self):
         """Same case, root translated as cygpath -w would translate it."""

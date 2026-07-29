@@ -65,10 +65,14 @@ else
   printf '  skip  manifest validation (claude CLI not on PATH)\n'
 fi
 
-# 3. The write guard's behaviour. POSIX end-to-end against the real hook, plus
-#    the path comparison under Windows semantics via ntpath — see the module
-#    docstring for what that does and does not establish.
-step "write guard suite" python3 plugins/genesis/tests/test_guard_writes.py
+# 3. Hook behaviour. Every suite under tests/, discovered rather than listed, so
+#    a new one is gated the moment it exists instead of the moment someone
+#    remembers to add it here. Each module's docstring states what it does and
+#    does not establish — the guard's in particular is specific about which part
+#    of the Windows fix no test on this platform can cover.
+for suite in plugins/genesis/tests/test_*.py; do
+  step "$(basename "$suite" .py)" python3 "$suite"
+done
 
 if [ "$FAILED" -ne 0 ]; then
   echo "verify: FAILED"

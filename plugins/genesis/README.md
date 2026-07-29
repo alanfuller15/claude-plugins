@@ -12,7 +12,7 @@ optionally provides.
 
 | Component | Kind | Effect |
 |---|---|---|
-| `SessionStart` | hook | Injects git state and your durable state files into a fresh or resumed session, marked as overriding conflicting context |
+| `SessionStart` | hook | Injects git state and your durable state files into a fresh or resumed session, marked as overriding conflicting context. In a project with none, names what it looked for and where the write guard is rooted |
 | `PreCompact` | hook | Snapshots the full transcript before compaction, so nothing is only recoverable from a summary |
 | `Stop` | hook | Runs your project's own verification gate; a failing gate prevents the turn from ending |
 | `PreToolUse` | hook | Denies `Write`/`Edit`/`NotebookEdit` calls whose target is outside the project. Does **not** cover writes made through Bash — see Design notes |
@@ -94,14 +94,22 @@ and a fix existing.
 ### Tests
 
 ```
-python3 plugins/genesis/tests/test_guard_writes.py
+for t in plugins/genesis/tests/test_*.py; do python3 "$t"; done
 ```
 
-Covers the write guard: POSIX behaviour end-to-end against the real hook, and
-the path comparison under Windows semantics via `ntpath`, which runs on any
-platform. Read the module docstring before extending it — it is specific about
-which part of the Windows fix the suite does **not** cover, and why adding a
-test that appeared to cover it would be worse than leaving the gap visible.
+`test_guard_writes.py` covers the write guard: POSIX behaviour end-to-end
+against the real hook, the denial message's three `git:` states and two root
+sources, and the path comparison under Windows semantics via `ntpath`, which
+runs on any platform. Read its module docstring before extending it — it is
+specific about which part of the Windows fix the suite does **not** cover, and
+why adding a test that appeared to cover it would be worse than leaving the gap
+visible.
+
+`test_session_start.py` covers the first-run block, including its two hard
+constraints: at most four lines, and byte-identical output to the previous
+version whenever a state file exists. The second is checked by running the
+previously committed script side by side rather than against a stored snapshot,
+which would drift with the file it is meant to pin.
 
 ---
 
@@ -109,6 +117,14 @@ test that appeared to cover it would be worse than leaving the gap visible.
 
 All of it is optional. With none of it, the plugin injects git state and
 guards writes — useful, and free.
+
+With none of it, `SessionStart` also spends up to four lines saying so: which
+state files it looked for, that no gate exists, and **where the write guard is
+rooted.** That last line is the one to read. The root is `CLAUDE_PROJECT_DIR`,
+or the directory the session was launched in if that is unset — so launching
+one level too high silently makes "the project" your home folder, and you would
+otherwise not discover it until something was blocked. Those lines disappear
+entirely once a state file exists.
 
 ### 1. Durable state (recommended)
 
@@ -170,6 +186,33 @@ for a path outside the repo because it seemed like the obvious place. It is
 **not a sandbox and must not be relied on as one.** If you need a real
 boundary, use the harness's own permission modes and directory settings; this
 guard is a seatbelt, not a wall.
+
+**What a denial says, and why it says that much.** As of 1.0.2 a denial names
+the root, the source that produced it, and whether that root is a repository:
+
+```
+  project root:  C:\Users\marke
+  root from:     current directory at session start (CLAUDE_PROJECT_DIR not set)
+  git:           no repository at this root
+```
+
+The criterion it was built to: **a reader with nothing but the message can
+decide whether the root is the one they meant.** Naming the root alone does not
+allow that — "outside `C:\Users\marke`" is equally consistent with a correct
+root and with a session launched one directory too high, and the second is both
+the common mistake and the invisible one. The source line says which lever
+changes it. The `git:` line has a third state, `inside repository <toplevel>`,
+which is the one that catches a root aimed at a subdirectory of a real project
+— more frequent than the no-repo case, and indistinguishable from a correct
+denial before this existed.
+
+**The guard fires even when the root is not a repository**, and that is a
+decision rather than an oversight. The alternative — go quiet with no repo —
+removes the guard exactly where accidental writes are most likely: scratch
+directories, folders of notes, one-off scripts, where "somewhere else on disk"
+is the plausible mistake. It also removes it *silently*, so a user who
+installed a write guard has none and no way to notice. A guard that fires with
+a good explanation is a smaller surprise than a guard that is not there.
 
 **Why that gap is left open rather than closed.** Covering Bash would mean
 parsing shell to find write targets — redirections, tool-specific in-place
@@ -273,5 +316,35 @@ because its absence cost something real:
   covers Windows path comparison on any platform via `ntpath`, which means the
   class of bug that required an external user to find is now caught on the
   author's own machine.
+
+- the denial message and the first-run lines, from the same install's first
+  hour — v1.0.2. The experience was: installed something, nothing happened,
+  then it blocked me. Every no-op on the way there was correct behaviour.
+  `SessionStart` had no state files to inject, `reconcile` had nothing to
+  reconcile, the gate had no `verify.sh` to run. Correct, and illegible.
+
+  **The brief for this work was built on a denial that was not current
+  behaviour, and correcting that changed what got built.** The blocked write
+  cited as motivation — `C:\Users\marke\alan\blackjack.py` refused against root
+  `C:\Users\marke` — is a path *inside* that root. It was denied only because
+  of the 1.0.1 Windows bug, and on any fixed version it is allowed. Building
+  from the brief as written would have meant tuning a guard that was no longer
+  misfiring.
+
+  What survived the correction is a better problem than the one reported.
+  The failure is not that the guard denied something it should have allowed;
+  it is that **a CORRECT denial does not tell you whether the root it is
+  defending is the one you meant.** On that user's setup the root really was
+  his entire home directory, inherited from wherever he happened to launch, and
+  nothing anywhere said so. The next denial he hits will be correct behaviour
+  against a root he never chose — and the message, before 1.0.2, gave him
+  nothing to notice that with.
+
+  The general form is worth keeping: a bug report describes the moment someone
+  noticed, which is not always the moment something broke. Here the noticing
+  was a real defect and the fix for it had already shipped, while the thing
+  worth building sat one question behind it. Checking the reported symptom
+  against current behaviour before designing from it cost one paragraph and
+  changed the whole scope.
 
 Apache-2.0.

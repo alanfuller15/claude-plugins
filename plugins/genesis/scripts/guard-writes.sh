@@ -86,6 +86,29 @@ TARGET_N=$(to_native "$TARGET")
 PROJECT_N=$(to_native "$PROJECT")
 HOME_N=$(to_native "${HOME:-}")
 
+# --- provenance of the root --------------------------------------------------
+#
+# A denial names a root. Naming it is not enough: the reader also has to be able
+# to tell whether it is the root they MEANT, and that needs the two facts below.
+# Without them the message is unfalsifiable — "outside C:\Users\marke" is
+# equally consistent with a correct root and with a session launched one
+# directory too high, which is the common mistake and the invisible one.
+#
+# Determined here in bash rather than in the snippet below, deliberately: git
+# must not be invoked from the python, because the tests run that snippet under
+# ntpath on macOS and Linux to exercise Windows path handling. Keeping it pure
+# path arithmetic is what makes that possible.
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  ROOT_SOURCE="env"
+else
+  ROOT_SOURCE="cwd"
+fi
+
+# Raw, un-normalised: git returns its own path flavour and the comparison
+# against the root belongs with all the other path comparisons, in one place.
+GIT_TOP=$(git -C "$PROJECT" rev-parse --show-toplevel 2>/dev/null || true)
+GIT_TOP_N=$(to_native "$GIT_TOP")
+
 # Target and root are resolved in ONE python invocation, by the same function,
 # so both sides go through identical logic. Two invocations invite exactly the
 # asymmetry the Windows bug was made of. os.path.normcase folds case and
@@ -94,14 +117,19 @@ HOME_N=$(to_native "${HOME:-}")
 #
 # NOTE: tests/test_guard_writes.py extracts the snippet between the PY_PATHCHECK
 # markers and runs it under ntpath to exercise the Windows comparison on any
-# platform. Keep it self-contained, and keep it addressing the path flavour
-# through os.path.* (including os.path.sep) rather than os.sep.
-python3 - "$TARGET_N" "$PROJECT_N" "$HOME_N" <<'PY_PATHCHECK'
+# platform. Keep it self-contained, keep git and every other subprocess out of
+# it, and keep it addressing the path flavour through os.path.* (including
+# os.path.sep) rather than os.sep.
+python3 - "$TARGET_N" "$PROJECT_N" "$HOME_N" "$ROOT_SOURCE" "$GIT_TOP_N" <<'PY_PATHCHECK'
 import json, os, sys
 
 
 def resolve(p):
     return os.path.realpath(os.path.abspath(p))
+
+
+def same(a, b):
+    return os.path.normcase(a) == os.path.normcase(b)
 
 
 def contains(root, target):
@@ -116,6 +144,8 @@ def contains(root, target):
 target = resolve(sys.argv[1])
 root = resolve(sys.argv[2])
 home = sys.argv[3]
+root_source = sys.argv[4]
+git_top = sys.argv[5]
 
 if contains(root, target):
     raise SystemExit(0)
@@ -124,15 +154,42 @@ if contains(root, target):
 if home and contains(resolve(os.path.join(home, ".claude")), target):
     raise SystemExit(0)
 
+# Where the root came from, so the reader knows which lever changes it.
+source = {
+    "env": "CLAUDE_PROJECT_DIR",
+    "cwd": "current directory at session start (CLAUDE_PROJECT_DIR not set)",
+}.get(root_source, root_source)
+
+# Whether the root is a project at all. The third state is the one that catches
+# a misaimed root inside a real repository — more common than the no-repo case,
+# and invisible without this line.
+if not git_top:
+    git = "no repository at this root"
+elif same(resolve(git_top), root):
+    git = "repository root"
+else:
+    git = f"inside repository {resolve(git_top)}"
+
 print(json.dumps({
     "hookSpecificOutput": {
         "hookEventName": "PreToolUse",
         "permissionDecision": "deny",
         "permissionDecisionReason": (
-            f"Write blocked: {target} is outside the project directory ({root}). "
-            "genesis denies writes outside the project. If this file genuinely "
-            "belongs outside the repo, tell the user what you need to write and "
-            "why, and let them do it."
+            f"Write blocked: {target} is outside the project root.\n"
+            f"\n"
+            f"  project root:  {root}\n"
+            f"  root from:     {source}\n"
+            f"  git:           {git}\n"
+            f"\n"
+            "genesis denies Write/Edit/NotebookEdit outside the project root. It "
+            "checks location only, not content, and does not cover writes made "
+            "through Bash.\n"
+            "\n"
+            "If that root is not the directory you meant, fix the root rather "
+            "than this write: relaunch in the intended directory, or set "
+            "CLAUDE_PROJECT_DIR. If the root is right and this file genuinely "
+            "belongs outside it, tell the user what you need to write and why, "
+            "and let them do it."
         ),
     }
 }))

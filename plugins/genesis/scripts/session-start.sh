@@ -13,7 +13,22 @@
 set -uo pipefail
 cd "${CLAUDE_PROJECT_DIR:-$PWD}" 2>/dev/null || exit 0
 
+# Duplicated from guard-writes.sh, where the reasoning lives. Seven lines of
+# copy beats a sourced sibling: this runs on every session start, and a shared
+# file would add a path-resolution failure mode to the one hook that must never
+# fail. The plugin already keeps each hook self-contained for this reason.
+to_native() {
+  [ -n "${1:-}" ] || return 0
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1" 2>/dev/null || printf '%s' "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # --- git state -------------------------------------------------------------
+GIT_TOP=$(git rev-parse --show-toplevel 2>/dev/null || true)
+
 if git rev-parse --git-dir >/dev/null 2>&1; then
   echo "## Repo state"
   echo "branch: $(git branch --show-current 2>/dev/null || echo 'detached')"
@@ -71,6 +86,42 @@ historically drifted pessimistic — describing the work as less finished than i
 is — so a claim that something is unfinished deserves a check before it is
 redone.
 EOF
+  echo
+fi
+
+# --- first-run orientation -------------------------------------------------
+#
+# ONLY when no state file was found. A project that has state gets output that
+# is byte-identical to what it got before this block existed — this text enters
+# context every session and that cost is real.
+#
+# The problem it addresses: with nothing configured, this hook emitted git
+# state and stopped, which reads as "installed something, nothing happened".
+# Every no-op was correct; none of them was legible. Naming what was looked for
+# turns an absent feature into an available one.
+#
+# The last line is the one that matters most, and it is not about setup at all.
+# It puts the write guard's root in front of the user BEFORE a denial can
+# surprise them with it — the same reasoning as the denial message itself,
+# applied earlier. A root inherited from wherever the session happened to be
+# launched is the failure mode, and it is invisible until something is blocked.
+#
+# Four lines is the ceiling. Anything that does not survive that limit does not
+# belong here.
+if [ "$FOUND" = "0" ]; then
+  echo "## genesis"
+  echo "state: no STATE.md, docs/STATE.md, HANDOFF.md or docs/HANDOFF.md — create one and it is injected here every session"
+  [ -f ".claude/verify.sh" ] || \
+    echo "gate: no .claude/verify.sh — create one and a turn cannot end while it fails"
+
+  ROOT_DISPLAY=$(to_native "$PWD")
+  if [ -z "$GIT_TOP" ]; then
+    echo "write guard active; project root is $ROOT_DISPLAY (no git repository here)"
+  elif [ "$(to_native "$GIT_TOP")" = "$ROOT_DISPLAY" ]; then
+    echo "write guard active; project root is $ROOT_DISPLAY (git repository root)"
+  else
+    echo "write guard active; project root is $ROOT_DISPLAY (inside repository $(to_native "$GIT_TOP"))"
+  fi
   echo
 fi
 
