@@ -42,13 +42,28 @@ Or load without installing:
 claude --plugin-dir ./claude-plugins/plugins/genesis
 ```
 
-Validate before pushing:
+### The gate
 
 ```
-claude plugin validate .
-claude plugin validate ./plugins/genesis
-python3 plugins/genesis/tests/test_guard_writes.py
+bash .claude/verify.sh
 ```
+
+Manifest validation, a syntax check on every hook script, and the write guard's
+test suite — about 1.7s. This is `genesis`'s own convention applied to the repo
+that ships it: `.claude/verify.sh` is the path the `Stop` hook looks for, so
+with the plugin installed here, **a turn that leaves the tree dirty cannot end
+while this fails.**
+
+It was added in 1.0.1, later than it should have been. This repo published a
+plugin arguing that projects should declare a gate while declaring none itself,
+and that gap has a name now: the Windows bug in the write guard reached a user
+because nothing here ran the guard against anything before it shipped.
+
+The gate deliberately does **not** check that the plugin version was bumped.
+The bump correctly comes last, so such a check would fail every turn of the
+work leading up to it — failing for a reason the turn cannot yet fix, which is
+how a gate teaches people to skip it. `claude plugin tag` checks that at
+release time, which is where it belongs.
 
 `genesis` pins a `version` in its `plugin.json`, and **it must be bumped on
 every release** — Claude Code compares on that field to decide whether an
