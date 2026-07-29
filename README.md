@@ -47,12 +47,17 @@ Validate before pushing:
 ```
 claude plugin validate .
 claude plugin validate ./plugins/genesis
+python3 plugins/genesis/tests/test_guard_writes.py
 ```
 
-Versions are omitted from the manifests deliberately — for a marketplace hosted
-in git, every commit is treated as a new version, which is the right setup for
-something under active development. Pin a `version` field only once a plugin
-stabilises.
+`genesis` pins a `version` in its `plugin.json`, and **it must be bumped on
+every release** — Claude Code compares on that field to decide whether an
+install is stale, so an unbumped change never reaches anyone who already has
+the plugin. This README previously said versions were omitted deliberately, on
+the reasoning that every commit to a git-hosted marketplace is its own version.
+That was wrong, and it was wrong in the direction that costs a user a fix they
+have already been told exists. See
+[the release rule](plugins/genesis/README.md#releasing).
 
 ## Licence
 

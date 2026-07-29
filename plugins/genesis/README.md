@@ -40,6 +40,13 @@ Local development:
 
 Or load without installing: `claude --plugin-dir ./claude-plugins/plugins/genesis`
 
+**Platforms.** macOS and Linux are what it is developed and tested on. Windows
+is supported through Git Bash/MSYS as of **1.0.1** — before that the write
+guard denied every write there (see Provenance). The Windows path handling is
+covered by tests that run anywhere, but the MSYS environment itself is verified
+by hand; if something looks wrong on Windows, it is worth reporting rather than
+assuming it is your setup.
+
 ### If `/reload-plugins` says `0 skills`
 
 It does, and **the skills are fine.** Verify it rather than taking this on
@@ -75,6 +82,26 @@ The failure is silent on both ends, which is what makes it worth a rule rather
 than a habit: the author sees a pushed commit and assumes it landed, the user
 sees a plugin that works and has no reason to look, and nothing anywhere
 reports that the two are different versions of the same thing.
+
+**1.0.1 is the release that made this concrete rather than hypothetical.** The
+rule was written against an imagined stale install; the first real one was a
+user running a build of the write guard that denied every write on his
+platform. Without the bump he would have kept it — a pushed fix he could not
+receive, for a bug he had already reported. A rule that had only ever been
+argued for was, on its first live test, the difference between a fix shipping
+and a fix existing.
+
+### Tests
+
+```
+python3 plugins/genesis/tests/test_guard_writes.py
+```
+
+Covers the write guard: POSIX behaviour end-to-end against the real hook, and
+the path comparison under Windows semantics via `ntpath`, which runs on any
+platform. Read the module docstring before extending it — it is specific about
+which part of the Windows fix the suite does **not** cover, and why adding a
+test that appeared to cover it would be worse than leaving the gap visible.
 
 ---
 
@@ -153,6 +180,33 @@ disabled, and a disabled guard catches nothing. **A narrow guard that is
 trusted beats a broad one that is not**, so the scope is deliberately the part
 that can be checked exactly: a literal path in a known field.
 
+**Why the write guard normalises paths through `cygpath` on Windows.** Under
+Git Bash/MSYS the environment gives POSIX-style paths — `$PWD`, `$HOME` and
+`CLAUDE_PROJECT_DIR` all arrive as `/c/Users/name` — while the tool reports the
+write target as a native path, `C:\Users\name\project\file.md`. Windows Python
+does not reject the POSIX form: `os.path.realpath("/c/Users/name")` returns
+`C:\c\Users\name` and raises nothing. So the root and the target never shared a
+prefix, no in-project path ever matched, and **the guard denied every write on
+Windows.** Not a degraded check — an inverted one.
+
+The fix has three parts, and each is doing separate work. Paths go through
+`cygpath -w` before Python sees them, because MSYS's own translation is the
+only thing that gets root mappings and drive mounts right, and because MSYS
+argv translation is not a substitute — it rewrites arguments on the way into a
+native binary but not the environment variables this script reads, which is
+precisely the asymmetry that caused the bug. Target and root are then resolved
+in a **single** Python invocation by the same function, with
+`os.path.normcase`, so there is no seam where the two sides can diverge again.
+And where `cygpath` is absent the value passes through untouched, so macOS and
+Linux behaviour is unchanged — verified by running the pre-fix suite against
+both builds.
+
+The general lesson is worth more than the fix: the failure was not that the
+comparison was wrong, but that **the two sides of it were normalised by
+different code paths.** One invocation for both operands is the structural
+version of that fix, and it is why the patch consolidates rather than adding a
+second special case.
+
 **Why the plugin does not define "verified."** It cannot know. Projects declare
 their own gate at a known path; the plugin runs it and reports. That is what
 makes this portable across a Python research repo and a static web app without
@@ -193,5 +247,31 @@ because its absence cost something real:
   is cheap and the explanation it forces is where the error surfaced. And the
   claim was caught by its own machinery rather than by review, which is a
   better argument for the design than the overstated sentence it replaced.
+
+- the write guard's Windows path handling, and the test suite around it, from
+  **the first external bug report this plugin received** — v1.0.1, from the
+  first person to install it who was not its author.
+
+  **The guard had never been run on Windows before 1.0.0 shipped.** It was
+  written on macOS, reasoned about on macOS, and documented as though the
+  platform question had been settled rather than never asked. What shipped was
+  not a guard that worked less well on Windows; it was a guard that denied
+  every write on Windows, and would have looked to a new user like a plugin
+  that simply does not work.
+
+  Worth recording precisely because of how the bug hid. `os.path.realpath` on
+  a POSIX-style path under Windows Python does not fail, does not warn, and
+  returns a plausible-looking string — `/c/Users/name` becomes
+  `C:\c\Users\name`. Every individual step succeeded. Nothing in the design
+  reasoning was wrong; the untested assumption was that a path is a path. The
+  cost of "obviously portable, no need to check" is only ever paid by someone
+  else, and here that someone was a first-time user whose first experience of
+  the plugin was it refusing to let the model write anything at all.
+
+  It also fixed the tests, which is the larger repair. 1.0.0 had none — the
+  guard's correctness rested entirely on reading it. The suite added in 1.0.1
+  covers Windows path comparison on any platform via `ntpath`, which means the
+  class of bug that required an external user to find is now caught on the
+  author's own machine.
 
 Apache-2.0.
