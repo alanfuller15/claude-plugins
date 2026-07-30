@@ -21,9 +21,12 @@ Then install what you want:
 
 ### [`genesis`](plugins/genesis/) — session continuity and verification
 
-Four hooks, three skills, one agent. Injects durable state at session start,
+Four hooks, four skills, one agent. Injects durable state at session start,
 snapshots transcripts before compaction, runs the project's own verification
-gate before a turn can end, and blocks writes outside the project.
+gate before a turn can end, and blocks writes outside the project. The skills
+are the same discipline by hand: reconciling the record against the tree, fixing
+a decision rule before measuring, closing a session so the next one resumes from
+disk, and checking "this needs inventing" against the field before designing it.
 
 Ships no project knowledge. Everything it reads is a file your repo optionally
 provides, so it works unchanged across a Python research repo and a static web

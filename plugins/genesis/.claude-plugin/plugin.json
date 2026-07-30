@@ -1,6 +1,6 @@
 {
   "name": "genesis",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Session continuity and verification discipline for long-running projects. Injects durable state at session start, snapshots transcripts before compaction, runs the project's own verification gate before a turn can end, and blocks writes outside the project. Ships the machinery; the project ships the content.",
   "author": {
     "name": "alanfuller15"
@@ -13,6 +13,7 @@
     "verification",
     "handoff",
     "compaction",
-    "research-workflow"
+    "research-workflow",
+    "prior-art"
   ]
 }

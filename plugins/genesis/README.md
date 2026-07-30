@@ -19,6 +19,7 @@ optionally provides.
 | `/genesis:reconcile` | skill | Verifies status documents against the tree and corrects drift |
 | `/genesis:handoff` | skill | Closes a session so the next resumes from disk |
 | `/genesis:preregister` | skill | Fixes a decision rule before a measurement runs |
+| `/genesis:prior-art` | skill | Checks "this needs inventing" against the field, under a protocol that makes "found nothing" falsifiable |
 | `verifier` | agent | Read-only verification sweep in an isolated context |
 
 ---
@@ -250,6 +251,25 @@ different code paths.** One invocation for both operands is the structural
 version of that fix, and it is why the patch consolidates rather than adding a
 second special case.
 
+**Why a research protocol lives in a session-continuity plugin.** `prior-art` is
+the odd one out on first read, and a later reader will fairly ask what it is
+doing here. The other three skills all keep a claim record honest across
+sessions: `reconcile` checks the record against the tree, `preregister` fixes a
+decision rule before a result can select its own threshold, `handoff` preserves
+the reasoning that compaction destroys. **`prior-art` is the same discipline
+pointed outward.** It checks one specific claim — *this needs inventing* —
+against the world rather than against the repository, and it does it the way the
+others do: by fixing a required shape in advance, so that a comfortable answer
+becomes a falsifiable one. "I searched and found nothing" fails in exactly the
+manner "the header still says unfinished" fails, and for the same reason —
+nothing in the record contradicts it, so nothing prompts a second look.
+
+The alternative was a second plugin. It was rejected because a research-protocol
+plugin holding one skill would ship this same argument twice, and would split the
+machinery that makes the protocol stick — the durable state where a fetched
+citation is recorded, the gate, the verifier agent — across two installs that
+have to be kept in step.
+
 **Why the plugin does not define "verified."** It cannot know. Projects declare
 their own gate at a known path; the plugin runs it and reports. That is what
 makes this portable across a Python research repo and a static web app without
@@ -275,6 +295,13 @@ because its absence cost something real:
 - the pre-registration skill, because a signal excluded in advance came back at
   74% against an 18.75% result — and only the advance exclusion made the 18.75%
   credible
+- the prior-art skill, because one project's pass over a single design document
+  checked six mechanisms and found prior art for **all six** — every one of them
+  hidden behind a name the project had invented for itself. Three turned up
+  failure modes the design was about to rediscover, and one supplied a
+  correction the design had no way to know it was missing. The searches that
+  returned nothing were the ones run against project vocabulary, which is why
+  renaming is step 1 of the protocol rather than an aside inside it
 - the verifier agent, because verification is high-volume input and low-volume
   output, which is exactly what an isolated context is for
 - the write guard's own documentation, narrowed by a worked instance during
