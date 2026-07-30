@@ -72,6 +72,25 @@ file in order to change a display number. Two copies that must be kept in sync
 is a real cost; a wrong count is a cosmetic one. The invocation bugs the
 workaround existed for are fixed.
 
+### A project skill and a plugin skill of the same name both stay live
+
+The situation this arises in: you write a skill inside a project as
+`.claude/skills/<name>/SKILL.md`, it earns its keep, and you generalise it into
+this plugin. **The two copies do not shadow one another.** Both are live. The
+project copy owns the bare `<name>`; the plugin's copy is reachable only as
+`genesis:<name>`.
+
+That is worse than shadowing would be. Both look correct in the listing,
+neither is wrong to invoke, and which protocol you actually run depends on
+which name you happen to type — so the fork you meant to replace keeps winning
+by default, in the project where you are most likely to be testing the
+replacement.
+
+**The check is to start a fresh non-interactive session and read its own skill
+listing** — not to restart and assume the new copy took. Verified that way in
+FieldGold on 2026-07-29. The remedy is to delete the project copy once the
+plugin is installed; there is nothing to configure.
+
 ### Releasing
 
 `version` in `plugins/genesis/.claude-plugin/plugin.json` **must be bumped on
