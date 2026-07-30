@@ -661,7 +661,75 @@ arXiv:2402.08115; NARA appraisal policy.
 
 ---
 
-## What this pass did not do
+## Resolutions, appended
+
+Conflicts above are left as written. Resolutions are recorded here.
+
+### C4 — settled 2026-07-29. **A `PreCompact` hook can block compaction.**
+### C4 is a real defect.
+
+Settled twice, by both routes the protocol accepts, because neither was to be
+inferred from how `PreToolUse` behaves — this repo's own Windows bug is the
+standing warning against assuming one surface behaves like another.
+
+**Documentation, fetched not summarised.** The hooks reference
+(`code.claude.com/docs/en/hooks`), *Exit code 2 behavior per event*:
+
+| Hook event | Can block? | What happens on exit 2 |
+| :--- | :--- | :--- |
+| `PreCompact` | Yes | Blocks compaction |
+
+The same page's *Decision control* table lists `PreCompact` among the events
+taking a top-level `decision`, with the key fields `decision: "block"` and
+`reason` — so blocking is available as structured JSON as well as by exit code.
+`PostCompact` appears in the final row of that table: *no decision control,*
+*used for side effects like logging or cleanup.*
+
+**Observed test.** A project containing only this hook —
+
+```json
+{ "hooks": { "PreCompact": [ { "hooks": [
+  { "type": "command", "command": "bash",
+    "args": ["-c", "echo PRECOMPACT_TEST_BLOCKED >&2; exit 2"] } ] } ] } }
+```
+
+— run as `claude -p "/compact" --settings .claude/settings.json`, produced:
+
+```
+Compaction blocked by PreCompact hook: [bash -c echo PRECOMPACT_TEST_BLOCKED >&2; exit 2]: PRECOMPACT_TEST_BLOCKED
+```
+
+Compaction did not occur. The stderr text reached the user verbatim, and the
+message names the hook that blocked.
+
+**Therefore C4 stands as a defect, not a forced divergence.** `pre-compact.sh`
+holds the ability to enforce the write-ahead rule it instantiates and declines
+to use it on every path: `mkdir -p "$BACKUP_DIR" || exit 0`, `mkdir -p "$DEST"
+|| exit 0`, a `TRANSCRIPT` of `-` or a missing file, and a `cp` whose failure is
+discarded by `2>/dev/null` with no check of its status. In each case compaction
+proceeds, the transcript is summarised, and the only copy of what was lost is
+gone — with nothing written anywhere saying a snapshot was expected and did not
+happen. The script's own header states the purpose it then fails to guarantee:
+"so nothing is ever only recoverable from a summary."
+
+**What the fix would be — not written, per the protocol.** Distinguish the two
+failures the script currently treats alike. *No transcript to copy* is not
+necessarily an error and may warrant proceeding. *A snapshot that was attempted
+and failed* is the case the WAL rule addresses, and there the hook should exit
+non-zero with a reason on stderr, blocking the compaction rather than allowing
+an unrecoverable one. That inverts the script's current failure direction, so it
+needs a deliberate decision about a hard case: a hook that blocks on a full disk
+blocks every subsequent compaction until the disk is cleared, which is a session
+that cannot compact. The narrow version — check `cp`'s exit status and block only
+when a transcript existed and its copy failed — is the one that matches the
+rule without that consequence.
+
+Worth recording alongside: **exiting 0 silently was never the only option even
+for a hook that could not block.** Stderr from a `PreCompact` hook is surfaced,
+so a failed snapshot could have been reported without preventing anything, and
+`PostCompact` exists as a place to record after the fact. The plugin's argument
+for the `Stop` gate — that enforcement beats a convention a model may not honour
+— was available here the whole time and was not applied.
 
 No behaviour changed. Fourteen conflicts (C1–C14) are filed above and none is
 resolved — resolving them is a decision, and this was a research pass.
@@ -672,3 +740,7 @@ verifier's existence; citing andon for the skip-file argument
 (C10 confirmatory/exploratory; C1 receiver read-back). One is a genuine
 open question about what the harness permits (C4, whether `PreCompact` can
 block compaction at all). The rest are judgments about scale.
+
+*As written on 2026-07-29, before C4 was investigated. That open question has
+since been answered — it can block — and C4 is a confirmed defect. See
+Resolutions above; the paragraph is left as it stood.*

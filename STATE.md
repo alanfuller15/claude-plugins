@@ -4,9 +4,33 @@ Read every session via genesis's own `SessionStart` hook. Keep it short.
 
 ## Where things stand
 
-`genesis` 1.0.6 published. Four hooks, four skills, one agent, two test suites,
-gate green (`bash .claude/verify.sh`, ~1.7s). No open defects. The one external
-bug report (Windows write guard, 1.0.1) is fixed and covered by tests.
+`genesis` 1.0.7. Four hooks, four skills, one agent, two test suites, gate green
+(`bash .claude/verify.sh`, ~1.7s). The one external bug report (Windows write
+guard, 1.0.1) is fixed and covered by tests.
+
+**One open defect: C4** — `pre-compact.sh` can block compaction and does not.
+Confirmed by fetched documentation and an observed test; see the Resolutions
+section of [docs/PRIOR-ART.md](docs/PRIOR-ART.md) for both, and for what the fix
+would be and the hard case it has to decide (a hook that blocks on a full disk
+blocks every subsequent compaction).
+
+**1.0.6 was published and withdrawn**, 2026-07-30 ~02:00Z, live about 20
+minutes. It carried no plugin payload — `git diff 50a64f1 c29281e --
+plugins/genesis/` is the version string alone. The rule now scopes to shipped
+content, meaning anything under `plugins/genesis/`; reasoning is a Provenance
+entry in the plugin README.
+
+**The withdrawal shipped as 1.0.7, not as a rollback to 1.0.5**, and the reason
+is the finding: the commit correcting the rule edits
+`plugins/genesis/README.md`, which **is** shipped content — verified present in
+the install cache at
+`~/.claude/plugins/cache/alanfuller15-tools/genesis/1.0.5/README.md`,
+byte-identical to 50a64f1. Reusing the 1.0.5 key against a corrected README
+would leave every existing install holding the old copy with nothing to tell
+them, which is the 1.0.1 failure. A rollback would have been mechanically fine
+(the version is a cache key compared for equality, not an ordering) and wrong on
+content. **1.0.6 is burnt — never reuse it**: an install that fetched it would
+see a matching key and skip.
 
 ## Prior art
 
@@ -25,12 +49,14 @@ invented — the same result the `prior-art` skill cites as its own case study.
 | pre-registration | *name matched* — but pre-analysis plan, Registered Reports, HARKing, garden of forking paths |
 | recorded failure classes | Orthogonal Defect Classification; lessons-learned repository; pesticide paradox |
 
-**Fourteen conflicts filed (C1–C14), none resolved** — resolving is a decision,
-that was a research pass. The four that would change behaviour:
+**Fourteen conflicts filed (C1–C14). C4 settled; thirteen open** — resolving is
+a decision, that was a research pass. The four that would change behaviour:
 
-- **C4** — `pre-compact.sh` instantiates WAL and fails open on every error path,
-  so compaction can proceed with no snapshot and no signal. Open question first:
-  can `PreCompact` block compaction at all?
+- **C4 — SETTLED, real defect.** `pre-compact.sh` instantiates WAL and fails
+  open on every error path, so compaction proceeds with no snapshot and no
+  signal. A `PreCompact` hook *can* block: exit 2 blocks compaction (docs), and
+  an observed test produced `Compaction blocked by PreCompact hook`. The
+  divergence is chosen, not forced. Fix not written.
 - **C5** — Cross-Context Review measured a *context-aware* subagent at 23.8% F1,
   indistinguishable from same-session self-review (24.6%) and below fresh-context
   review (28.6%). The verifier is prompted by the context under review.
@@ -60,6 +86,11 @@ is more than convenience.
 
 ## Next
 
-Decide C1/C4/C5/C10 individually — each is a separate call, and C4 needs the
-harness question answered before it can be judged. Take the two free citations
-whenever the relevant file is next touched.
+Fix C4 — it is the only confirmed defect, the harness question is answered, and
+the narrow form (check `cp`'s exit status; block only when a transcript existed
+and its copy failed) is written up. That fix touches `plugins/genesis/`, so it
+is a real release: bump to 1.0.8.
+
+Then decide C1/C5/C10 individually — each is a separate call, and C10 is a
+ruling not yet made. Take the two free citations whenever the relevant file is
+next touched.

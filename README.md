@@ -68,10 +68,13 @@ work leading up to it — failing for a reason the turn cannot yet fix, which is
 how a gate teaches people to skip it. `claude plugin tag` checks that at
 release time, which is where it belongs.
 
-`genesis` pins a `version` in its `plugin.json`, and **it must be bumped on
-every release** — Claude Code compares on that field to decide whether an
-install is stale, so an unbumped change never reaches anyone who already has
-the plugin. This README previously said versions were omitted deliberately, on
+`genesis` pins a `version` in its `plugin.json`, and **it must be bumped
+whenever anything under `plugins/genesis/` changes** — Claude Code uses that
+field as the cache key deciding whether an update is available, so an unbumped
+change never reaches anyone who already has the plugin. The converse also
+holds and cost this repo a version number: documentation outside
+`plugins/genesis/` never reaches an install, so bumping for it advertises an
+update with no payload. This README previously said versions were omitted deliberately, on
 the reasoning that every commit to a git-hosted marketplace is its own version.
 That was wrong, and it was wrong in the direction that costs a user a fix they
 have already been told exists. See

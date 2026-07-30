@@ -93,15 +93,30 @@ plugin is installed; there is nothing to configure.
 
 ### Releasing
 
-`version` in `plugins/genesis/.claude-plugin/plugin.json` **must be bumped on
-every release.** Claude Code compares on that field to decide whether an
-install is stale. Ship a change without bumping it and existing installs keep
-the old copy indefinitely — they are never told there is anything to fetch.
+`version` in `plugins/genesis/.claude-plugin/plugin.json` **must be bumped
+whenever the shipped plugin content changes — meaning anything under
+`plugins/genesis/`.** Claude Code uses that field as the cache key that decides
+whether an update is available, and skips the update when it matches what is
+installed. Ship a change without bumping it and existing installs keep the old
+copy indefinitely — they are never told there is anything to fetch.
 
-The failure is silent on both ends, which is what makes it worth a rule rather
-than a habit: the author sees a pushed commit and assumes it landed, the user
-sees a plugin that works and has no reason to look, and nothing anywhere
-reports that the two are different versions of the same thing.
+**Documentation elsewhere in the repo is not a release.** `STATE.md`, `docs/`,
+the root `README.md` and anything else outside `plugins/genesis/` never reach an
+install, so a bump for one of those advertises an update whose payload is
+nothing. The rule used to say *bump on every release* and never said what a
+release was; see Provenance for the bump that exposed the gap.
+
+The line is *shipped content*, and it is checkable rather than a matter of
+taste — an install's copy lives at
+`~/.claude/plugins/cache/<marketplace>/genesis/<version>/`, so `ls` that
+directory to see what a bump would actually deliver. **This README is in
+there**, which means a change to it is a release even though it changes no
+behaviour.
+
+The failure the rule exists for is silent on both ends, which is what makes it
+worth a rule rather than a habit: the author sees a pushed commit and assumes it
+landed, the user sees a plugin that works and has no reason to look, and nothing
+anywhere reports that the two are different versions of the same thing.
 
 **1.0.1 is the release that made this concrete rather than hypothetical.** The
 rule was written against an imagined stale install; the first real one was a
@@ -435,5 +450,46 @@ because its absence cost something real:
   worth building sat one question behind it. Checking the reported symptom
   against current behaviour before designing from it cost one paragraph and
   changed the whole scope.
+
+- the release rule's **scope**, from the first version this repo published with
+  nothing in it — 1.0.6, withdrawn, and the withdrawal shipped as 1.0.7. The
+  prior-art pass over genesis's own six mechanisms recorded its findings in
+  `STATE.md` and `docs/PRIOR-ART.md`, changed no plugin file, and bumped the
+  version anyway. Correctly, by the rule as written: it said *bump on every
+  release* and never said what a release was.
+
+  **A version that moves without a payload teaches people that the version
+  means nothing** — and that is the same failure this README already measures
+  one section away, where a filter that read seven of eight clean benches as
+  encumbered stopped being read at all. A bump is a signal, and a signal that
+  fires when nothing shipped carries no information. The cost is not the wasted
+  number; it is that the next bump, the one carrying a fix someone reported, is
+  now indistinguishable from a documentation commit.
+
+  **Rolling the number back to 1.0.5 was the obvious repair and it was the
+  wrong one.** Mechanically it would have worked: the version is a *cache key
+  compared for equality, not an ordering* — an update is skipped only when the
+  resolved version matches what is installed — so a lower number is still a
+  different key and still applies. What made it wrong is that reusing a key
+  requires the content behind it to be unchanged, and the commit that reworded
+  this rule **edits this file, which is shipped content.** Verified rather than
+  assumed: `README.md` is present in the install cache at
+  `~/.claude/plugins/cache/<marketplace>/genesis/<version>/`, byte-identical to
+  the commit it was fetched from. A 1.0.5 pointing at a corrected README would
+  have been a key resolving to content every existing 1.0.5 install already
+  holds a different copy of — and would never be told about, because the key
+  matches. That is the 1.0.1 failure again, wearing the costume of a fix.
+
+  So the wasted number stands and the correction ships as 1.0.7. **The rule's
+  first application was to the commit that introduced it, and it said bump** —
+  which is the cheapest possible demonstration that the scope is drawn in the
+  right place.
+
+  What this instance adds to the 1.0.1 story is the other edge of the same
+  rule. 1.0.1 established that an unbumped change never reaches anyone. This
+  establishes that a bumped non-change reaches everyone for nothing. The rule
+  needed a scope, not more force — and the scope is *shipped content*, which is
+  a fact about what lands in the cache rather than a judgment about what feels
+  like a release.
 
 Apache-2.0.
