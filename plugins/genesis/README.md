@@ -13,7 +13,7 @@ optionally provides.
 | Component | Kind | Effect |
 |---|---|---|
 | `SessionStart` | hook | Injects git state and your durable state files into a fresh or resumed session, marked as overriding conflicting context. In a project with none, names what it looked for and where the write guard is rooted. Adds one line offering `prior-art` while no pass is recorded |
-| `PreCompact` | hook | Snapshots the full transcript before compaction, so nothing is only recoverable from a summary |
+| `PreCompact` | hook | Snapshots the full transcript before compaction, so nothing is only recoverable from a summary. Blocks the compaction if a transcript existed and the copy failed — that case only |
 | `Stop` | hook | Runs your project's own verification gate; a failing gate prevents the turn from ending |
 | `PreToolUse` | hook | Denies `Write`/`Edit`/`NotebookEdit` calls whose target is outside the project. Does **not** cover writes made through Bash — see Design notes |
 | `/genesis:reconcile` | skill | Verifies status documents against the tree and corrects drift |
@@ -146,6 +146,16 @@ version whenever a state file exists. The second is checked by running the
 previously committed script side by side rather than against a stored snapshot,
 which would drift with the file it is meant to pin.
 
+`test_pre_compact.py` covers the 1.0.8 snapshot block in both directions: a
+failed copy blocks and reports, a successful one is silent, and the
+no-transcript, missing-file, malformed-payload and unwritable-project cases are
+asserted to **proceed**. That second group is the scope itself rather than extra
+coverage — a hook that blocked on every failure would satisfy any test that only
+checked the blocking case, while handing a user with an unwritable `.genesis/` a
+session that can never compact. Four mutants establish that the suite would
+catch the regression rather than passing regardless; one of them deliberately
+over-blocks, which is the direction a careless fix breaks in.
+
 That second constraint has **one** exemption, the prior-art line added in 1.0.5.
 It was not waived: the test now requires that deleting that single line
 reproduces the pinned baseline byte for byte, so the exemption is bounded by an
@@ -215,6 +225,12 @@ not depend on careful reading: the turn cannot end while it fails, whatever the
 model believes. Anything that must hold regardless belongs here; anything
 advisory belongs in `CLAUDE.md`. **That strength is specific to the `Stop`
 gate and does not transfer to the write guard** — see the next two notes.
+
+It took until 1.0.8 for that argument to reach the hook it applied to most
+obviously: `PreCompact` could have blocked a compaction whose snapshot failed
+from the very first release, and instead exited 0 silently through eight of them
+— the plugin declining, on its own machinery, the exact reasoning this note
+makes.
 
 **What the write guard actually covers, stated precisely.** It denies
 `Write`, `Edit` and `NotebookEdit` calls whose target path resolves outside the

@@ -731,6 +731,60 @@ so a failed snapshot could have been reported without preventing anything, and
 for the `Stop` gate — that enforcement beats a convention a model may not honour
 — was available here the whole time and was not applied.
 
+### C4 — fixed in 1.0.8, narrow form
+
+`pre-compact.sh` now checks `cp`'s exit status and blocks compaction in **one**
+case: a transcript existed and copying it failed. Its stderr is captured for the
+message rather than discarded to `/dev/null`, so the reader is told whether this
+is a full disk, a permission problem, or something else.
+
+Everything else still proceeds, and that is the load-bearing half:
+
+| case | behaviour | why |
+| :--- | :--- | :--- |
+| transcript existed, copy failed | **exit 2, blocks** | the WAL case — the thing being protected is already gone |
+| `mkdir` fails at either level | exit 0 | blocking would make an unwritable `.genesis/` a permanently uncompactable session |
+| no `transcript_path`, or the path does not exist | exit 0 | nothing was lost |
+| malformed or empty payload | exit 0 | fails open, as `guard-writes.sh` does for a missing `python3` |
+| durable-state / HEAD / dirty-tree extras fail | exit 0 | context for a later reader, not the irreplaceable artifact |
+
+**The message carries the escalation, because the hook has no time-box.** The
+andon finding in §4 is the argument: the field's version of stop-the-line is a
+bounded escalation, not an indefinite halt. This hook cannot bound anything, so
+the message states what was expected and did not happen, both paths, `cp`'s own
+error, why proceeding was refused, and the way out — fix the cause and compact
+again, and as a last resort `/plugin disable genesis`. It also says explicitly
+that **`.genesis/skip-verify` does not apply here**, since a reader who tries the
+plugin's one skip file and finds it ignored is worse off than one who was told.
+That there is no skip route for the snapshot is a gap this fix does not close.
+
+**Tests: `plugins/genesis/tests/test_pre_compact.py`, 23 cases.** Both
+directions, per this repo's convention — a failing copy blocks and reports, a
+succeeding copy does not, and the no-transcript case proceeds. A copy is failed
+two ways: a `cp` stub earlier on `PATH` (deterministic, works as any user, the
+`CygpathPlumbing` idiom) and a genuinely unreadable source file (closer to the
+world, skipped under root rather than passing vacuously).
+
+Four **mutants**, in the shape of
+`test_the_1_0_1_bug_reproduces_without_normalisation` — break the fix in one
+respect, assert the outcome changes:
+
+- append `&& false` to the new condition, so the copy still runs and only its
+  status is ignored: the 1.0.0–1.0.7 defect, asserted to stop blocking
+- `exit 2` → `exit 0`: pins the exit code, since only 2 blocks at `PreCompact`
+  and a hook that printed the message and exited 0 would look right in a
+  transcript while protecting nothing
+- drop the `[ -f "$TRANSCRIPT" ]` guard: asserted to **over**-block on a missing
+  transcript, which is what makes the proceed-without-blocking cases
+  load-bearing rather than incidental
+- `mkdir … || exit 0` → `|| exit 2`: demonstrates the permanently-uncompactable
+  session the narrow scope exists to avoid
+
+Not covered, and not coverable here: that Claude Code honours exit 2 at
+`PreCompact`. That is a fact about the harness, established by the fetched table
+and the observation recorded above, and the suite's docstring says so rather than
+implying otherwise.
+
 No behaviour changed. Fourteen conflicts (C1–C14) are filed above and none is
 resolved — resolving them is a decision, and this was a research pass.
 

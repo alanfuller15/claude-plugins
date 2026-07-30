@@ -4,15 +4,24 @@ Read every session via genesis's own `SessionStart` hook. Keep it short.
 
 ## Where things stand
 
-`genesis` 1.0.7. Four hooks, four skills, one agent, two test suites, gate green
-(`bash .claude/verify.sh`, ~1.7s). The one external bug report (Windows write
+`genesis` 1.0.8. Four hooks, four skills, one agent, three test suites, gate
+green (`bash .claude/verify.sh`). The one external bug report (Windows write
 guard, 1.0.1) is fixed and covered by tests.
 
-**One open defect: C4** — `pre-compact.sh` can block compaction and does not.
-Confirmed by fetched documentation and an observed test; see the Resolutions
-section of [docs/PRIOR-ART.md](docs/PRIOR-ART.md) for both, and for what the fix
-would be and the hard case it has to decide (a hook that blocks on a full disk
-blocks every subsequent compaction).
+**No open defects. C4 fixed in 1.0.8**, narrow form: `pre-compact.sh` checks
+`cp`'s exit status and blocks compaction when a transcript existed and its copy
+failed — that case only. `mkdir` failure, a missing or absent transcript, and a
+malformed payload all still proceed, because blocking there would hand a user an
+uncompactable session. 23 tests in `test_pre_compact.py`, including four mutants;
+one mutant deliberately over-blocks, since that is the direction a careless fix
+breaks in. Full record in the Resolutions section of
+[docs/PRIOR-ART.md](docs/PRIOR-ART.md).
+
+**Known gap, not a defect:** there is no skip route for the snapshot, so the
+block has no time-box — the andon finding's version of stop-the-line does. The
+stderr message carries the escalation instead (cause, both paths, `cp`'s error,
+and `/plugin disable genesis` as last resort) and says explicitly that
+`.genesis/skip-verify` does not apply here.
 
 **1.0.6 was published and withdrawn**, 2026-07-30 ~02:00Z, live about 20
 minutes. It carried no plugin payload — `git diff 50a64f1 c29281e --
@@ -49,14 +58,13 @@ invented — the same result the `prior-art` skill cites as its own case study.
 | pre-registration | *name matched* — but pre-analysis plan, Registered Reports, HARKing, garden of forking paths |
 | recorded failure classes | Orthogonal Defect Classification; lessons-learned repository; pesticide paradox |
 
-**Fourteen conflicts filed (C1–C14). C4 settled; thirteen open** — resolving is
-a decision, that was a research pass. The four that would change behaviour:
+**Fourteen conflicts filed (C1–C14). C4 closed; thirteen open** — resolving is
+a decision, that was a research pass. The ones that would change behaviour:
 
-- **C4 — SETTLED, real defect.** `pre-compact.sh` instantiates WAL and fails
-  open on every error path, so compaction proceeds with no snapshot and no
-  signal. A `PreCompact` hook *can* block: exit 2 blocks compaction (docs), and
-  an observed test produced `Compaction blocked by PreCompact hook`. The
-  divergence is chosen, not forced. Fix not written.
+- **C4 — CLOSED in 1.0.8.** A `PreCompact` hook *can* block: exit 2 blocks
+  compaction (docs), and an observed test produced `Compaction blocked by
+  PreCompact hook`. The divergence was chosen, not forced, and is now fixed in
+  the narrow form. See above.
 - **C5** — Cross-Context Review measured a *context-aware* subagent at 23.8% F1,
   indistinguishable from same-session self-review (24.6%) and below fresh-context
   review (28.6%). The verifier is prompted by the context under review.
@@ -86,11 +94,11 @@ is more than convenience.
 
 ## Next
 
-Fix C4 — it is the only confirmed defect, the harness question is answered, and
-the narrow form (check `cp`'s exit status; block only when a transcript existed
-and its copy failed) is written up. That fix touches `plugins/genesis/`, so it
-is a real release: bump to 1.0.8.
+Decide C1/C5/C10 individually — each is a separate call, and C10 is a ruling not
+yet made. Take the two free citations whenever the relevant file is next touched.
 
-Then decide C1/C5/C10 individually — each is a separate call, and C10 is a
-ruling not yet made. Take the two free citations whenever the relevant file is
-next touched.
+Two things C4's fix left behind, neither urgent: the snapshot block has no skip
+route (a `.genesis/skip-compact` would be the obvious shape, and whether that is
+wanted is a decision), and the snapshot is still verified only by `cp`'s exit
+status — a copy that succeeds but truncates would pass. Next release is 1.0.9;
+1.0.6 is burnt and must never be reused.
