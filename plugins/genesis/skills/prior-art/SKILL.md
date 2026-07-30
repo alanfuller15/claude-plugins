@@ -1,6 +1,6 @@
 ---
 name: prior-art
-description: Search for prior art on a mechanism before designing it, under a protocol that makes "I found nothing" a checkable claim. Use before designing anything this project has not built before — a new interaction, a new state model, a new way of reporting failure. Requires two mechanically different searches, both recorded verbatim, and reports in a fixed shape. Not for bug fixes, rewordings, or work already grounded in a source that has been cited and fetched.
+description: Search for prior art before designing a mechanism, under a protocol that makes "I found nothing" a checkable claim. Use when about to design a scheduler, queue, cache, parser, state machine, diffing algorithm, sync mechanism, retry policy, permissions model, undo system, plugin architecture, or rate limiter — or any comparable mechanism where a field plausibly already has a documented answer, including its failure modes. Requires two mechanically different searches, both recorded verbatim, and reports in a fixed shape. Not for bug fixes, rewordings, or work already grounded in a source that has been cited and fetched.
 ---
 
 # Check the field before designing it
@@ -94,6 +94,12 @@ For each thing checked:
 - **FIT** — what applies here, what does not, and why
 - **DELTA** — what genuinely remains ours to design
 - **THE TWO QUERIES** — verbatim, with the dimensions the second varied
+
+**Record the report in the project's durable state** (`STATE.md`, `HANDOFF.md`
+or whichever the project uses), not only in the conversation. A pass that exists
+only in a transcript cannot be inherited: the next session re-searches ground
+already covered, and the recorded queries — the thing that makes "found nothing"
+checkable by someone else — are exactly what compaction discards first.
 
 ## The rules that make the report honest
 

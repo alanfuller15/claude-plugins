@@ -12,7 +12,7 @@ optionally provides.
 
 | Component | Kind | Effect |
 |---|---|---|
-| `SessionStart` | hook | Injects git state and your durable state files into a fresh or resumed session, marked as overriding conflicting context. In a project with none, names what it looked for and where the write guard is rooted |
+| `SessionStart` | hook | Injects git state and your durable state files into a fresh or resumed session, marked as overriding conflicting context. In a project with none, names what it looked for and where the write guard is rooted. Adds one line offering `prior-art` while no pass is recorded |
 | `PreCompact` | hook | Snapshots the full transcript before compaction, so nothing is only recoverable from a summary |
 | `Stop` | hook | Runs your project's own verification gate; a failing gate prevents the turn from ending |
 | `PreToolUse` | hook | Denies `Write`/`Edit`/`NotebookEdit` calls whose target is outside the project. Does **not** cover writes made through Bash — see Design notes |
@@ -130,6 +130,12 @@ constraints: at most four lines, and byte-identical output to the previous
 version whenever a state file exists. The second is checked by running the
 previously committed script side by side rather than against a stored snapshot,
 which would drift with the file it is meant to pin.
+
+That second constraint has **one** exemption, the prior-art line added in 1.0.5.
+It was not waived: the test now requires that deleting that single line
+reproduces the pinned baseline byte for byte, so the exemption is bounded by an
+assertion rather than by whoever remembers it. Anything else that drifts into
+every session's context still fails the suite.
 
 ---
 
@@ -288,6 +294,43 @@ plugin holding one skill would ship this same argument twice, and would split th
 machinery that makes the protocol stick — the durable state where a fetched
 citation is recorded, the gate, the verifier agent — across two installs that
 have to be kept in step.
+
+**Why the prior-art notice is a line rather than a setting.** A capability
+nobody knows about is not available, so `SessionStart` says once per session
+that the pass exists — until the project's state records one, after which it
+stops. The tempting alternatives were all worse. A toggle or a marker file is a
+preference someone has to remember, which is a prompt with extra steps and
+leaves the plugin needing to be asked before it works. An unconditional line is
+a permanent tax on every session of every project forever.
+
+**What the line claims is exactly what it checks**, which is the part worth
+copying. The hook greps the state files it already reads; it cannot know whether
+a pass happened, so it says *none recorded in this project's state* rather than
+*this project has never checked*. That distinction is what let the check exist
+at all — an honest weak signal is available where an accurate one is not, and a
+line that overclaims would be wrong in every project that recorded its pass
+somewhere else.
+
+It is the skill that makes the signal real: `prior-art` step 4 writes the report
+into the durable state, so the thing being detected is a project declaration in
+a project file rather than a plugin's guess. That is also the off switch, and it
+is one nobody has to be told about — the notice stops when the thing it is
+asking for exists. It fires whether or not state files are present, because a
+mature project that has never checked the field is the case that most needs it.
+
+**Why the skill description lists mechanisms by name.** It used to say "anything
+this project has not built before — a new interaction, a new state model." That
+describes nearly every request, and deciding whether something *is* a new state
+model is itself the judgment the skill was supposed to remove, so it fired
+inconsistently. The description now leads with things a request can be matched
+against without interpretation — scheduler, queue, cache, parser, state machine,
+diffing algorithm, retry policy, rate limiter — and keeps the abstract category
+only as a second clause, calibrated to *a field plausibly has a documented
+answer* rather than to novelty. **A check that fires everywhere gets dismissed
+everywhere**, and that is measured rather than asserted: one of the projects
+this plugin was extracted from had a flat 2000m avoid radius that read seven of
+eight clean benches as encumbered. A filter that says yes to almost everything
+carries no information, and stops being read.
 
 **Why the plugin does not define "verified."** It cannot know. Projects declare
 their own gate at a known path; the plugin runs it and reports. That is what

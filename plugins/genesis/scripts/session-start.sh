@@ -71,6 +71,33 @@ for f in STATE.md docs/STATE.md HANDOFF.md docs/HANDOFF.md; do
   if [ -f "$f" ]; then emit "$f"; FOUND=1; fi
 done
 
+# --- prior-art availability ------------------------------------------------
+#
+# ONE line, and only when the project's own state records no prior-art pass.
+#
+# What is checked is exactly what the line claims: whether the state files
+# above mention one. The plugin ships no project knowledge and cannot know
+# whether a pass happened — so the line says "none recorded in this project's
+# state", never "this project has never run one". A pass recorded elsewhere
+# costs a redundant line, which is the cheap direction to be wrong in.
+#
+# This is a project declaration rather than a plugin inference because the
+# skill's step 4 now tells the pass to be written into the durable state. That
+# is also what gives the line an off switch requiring no configuration: it
+# stops the moment the thing it is asking for exists. A marker file or a
+# setting would be a preference someone has to remember, which is a prompt with
+# extra steps.
+#
+# It fires whether or not state files exist. A mature project that has never
+# checked the field is the case that most needs it, and suppressing it there
+# would have limited the line to projects that have configured nothing.
+PRIOR_ART=0
+for f in STATE.md docs/STATE.md HANDOFF.md docs/HANDOFF.md; do
+  [ -f "$f" ] || continue
+  if grep -qi 'prior[ -]art' "$f" 2>/dev/null; then PRIOR_ART=1; break; fi
+done
+PRIOR_ART_LINE="prior-art: none recorded in this project's state — before designing a mechanism (scheduler, cache, retry policy, undo model), /genesis:prior-art checks the field first"
+
 if [ "$FOUND" = "1" ]; then
   cat <<'EOF'
 ## Precedence
@@ -87,6 +114,11 @@ is — so a claim that something is unfinished deserves a check before it is
 redone.
 EOF
   echo
+
+  if [ "$PRIOR_ART" = "0" ]; then
+    echo "$PRIOR_ART_LINE"
+    echo
+  fi
 fi
 
 # --- first-run orientation -------------------------------------------------
@@ -113,6 +145,7 @@ if [ "$FOUND" = "0" ]; then
   echo "state: no STATE.md, docs/STATE.md, HANDOFF.md or docs/HANDOFF.md — create one and it is injected here every session"
   [ -f ".claude/verify.sh" ] || \
     echo "gate: no .claude/verify.sh — create one and a turn cannot end while it fails"
+  [ "$PRIOR_ART" = "1" ] || echo "$PRIOR_ART_LINE"
 
   ROOT_DISPLAY=$(to_native "$PWD")
   if [ -z "$GIT_TOP" ]; then
